@@ -29,6 +29,7 @@ type Check struct {
 	Name          string
 	PeriodSeconds int
 	GraceSeconds  int
+	CreatedAt     time.Time
 	LastPingAt    *time.Time
 }
 
@@ -40,13 +41,16 @@ type Declared struct {
 	GraceSeconds  int
 }
 
-// Deadline is when the check is considered overdue.
+// Deadline is when the check is considered overdue. A check that has never
+// pinged counts from the moment it was declared, so a switch that is never
+// armed still raises the alarm.
 func (c Check) Deadline() time.Time {
-	if c.LastPingAt == nil {
-		return time.Time{}
+	from := c.CreatedAt
+	if c.LastPingAt != nil {
+		from = *c.LastPingAt
 	}
 
-	return c.LastPingAt.Add(time.Duration(c.PeriodSeconds+c.GraceSeconds) * time.Second)
+	return from.Add(time.Duration(c.PeriodSeconds+c.GraceSeconds) * time.Second)
 }
 
 // Open connects to Postgres through Supabase's transaction pooler.
@@ -193,7 +197,8 @@ func (s *Store) RecordPing(
 }
 
 // ClaimOverdue moves every check past its deadline to down and returns the ones
-// it moved. A check still in state new has never pinged, so it is left alone.
+// it moved. A check that has never pinged counts from when it was declared,
+// because a switch nobody ever armed is the failure this exists to catch.
 //
 // The UPDATE is the claim. Whichever instance runs it first gets the rows, and
 // any other instance sees none, so each outage is announced exactly once.
@@ -201,9 +206,10 @@ func (s *Store) ClaimOverdue(ctx context.Context) ([]Check, error) {
 	const claim = `
 		UPDATE kestrel.checks
 		SET state = 'down', alerted_at = now()
-		WHERE state = 'up'
-		  AND last_ping_at + make_interval(secs => period_seconds + grace_seconds) < now()
-		RETURNING id, name, period_seconds, grace_seconds, last_ping_at`
+		WHERE state IN ('new', 'up')
+		  AND coalesce(last_ping_at, created_at)
+		      + make_interval(secs => period_seconds + grace_seconds) < now()
+		RETURNING id, name, period_seconds, grace_seconds, created_at, last_ping_at`
 
 	rows, err := s.pool.Query(ctx, claim)
 	if err != nil {
@@ -220,6 +226,7 @@ func (s *Store) ClaimOverdue(ctx context.Context) ([]Check, error) {
 			&c.Name,
 			&c.PeriodSeconds,
 			&c.GraceSeconds,
+			&c.CreatedAt,
 			&c.LastPingAt,
 		); err != nil {
 			return nil, fmt.Errorf("read an overdue check: %w", err)

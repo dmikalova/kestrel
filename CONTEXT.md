@@ -26,7 +26,8 @@ backup that sometimes runs long needs grace, not a longer period.
 
 ## Deadline
 
-`last_ping_at + period + grace`. A check past its deadline is overdue.
+`last_ping_at + period + grace`. A check that has never pinged counts from
+`created_at` instead. A check past its deadline is overdue.
 
 ## Sweep
 

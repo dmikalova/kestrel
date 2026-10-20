@@ -55,8 +55,12 @@ Migrations run in CI, not at boot. CI finds `db/schema.hcl`, reads
 
 ## The check state machine
 
-`new` means declared but never pinged, so provisioning a check does not page
-anyone. The first ping moves it to `up` without an announcement. The sweep
-moves `up` to `down` and announces. A ping moves `down` back to `up` and
-announces the recovery. There is no paused state; the schema's check
-constraint permits `new`, `up` and `down` only.
+`new` means declared but never pinged. The first ping moves it to `up` without
+an announcement. The sweep moves `new` or `up` to `down` and announces. A ping
+moves `down` back to `up` and announces the recovery. There is no paused state;
+the schema's check constraint permits `new`, `up` and `down` only.
+
+A `new` check counts its deadline from `created_at`, not from a ping it never
+sent. A switch nobody ever armed is the failure this exists to catch, so do not
+exempt `new` from the sweep. Grace has to cover the gap between declaring a
+check and wiring up the job that pings it.
