@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dmikalova/project-standards/main/schema/mklv.config.schema.json",
+  "name": "kestrel",
+  "entrypoint": "cmd/kestrel/main.go",
+  "kind": "cloudrun",
+  "ignore": {
+    "git": [
+      "/bin/",
+      "/build/",
+      "coverage.*",
+      "/kestrel"
+    ]
+  }
+}
